@@ -30,7 +30,11 @@ class VideoAnalyzer:
         ]
         
         try:
-            subprocess.run(cmd, check=True, capture_output=True)
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.returncode != 0:
+                console.print(f"[warning]yt-dlp failed for {video_url}: {result.stderr.strip()}[/]")
+                return None
+                
             # Find the generated subtitle file
             # yt-dlp usually appends .en.vtt or similar
             content = None
