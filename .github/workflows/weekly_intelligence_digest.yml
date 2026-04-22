@@ -28,6 +28,11 @@ jobs:
       with:
         python-version: '3.12'
 
+    - name: Install Deno (for yt-dlp)
+      uses: denoland/setup-deno@v2
+      with:
+        deno-version: v2.x
+
     - name: Install Dependencies
       run: |
         sudo apt-get update

@@ -20,12 +20,15 @@ class VideoAnalyzer:
         # -o temp_transcript: output template
         # --skip-download: only subs
         # --write-auto-subs: fallback to auto-generated
+        # --extractor-args: use different clients to bypass bot detection
         cmd = [
             "yt-dlp",
             "--write-auto-subs",
             "--skip-download",
             "--sub-format", "vtt/srt",
             "-o", "temp_transcript",
+            "--no-warnings",
+            "--extractor-args", "youtube:player-client=android,web",
             video_url
         ]
         
