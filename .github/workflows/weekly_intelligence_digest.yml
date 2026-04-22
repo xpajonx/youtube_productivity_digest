@@ -1,0 +1,53 @@
+name: Weekly Intelligence Digest
+
+on:
+  schedule:
+    - cron: '0 9 * * 0' # Every Sunday at 09:00 UTC
+  workflow_dispatch: # Allow manual trigger
+    inputs:
+      dry_run:
+        description: 'Dry Run (No Email)'
+        required: true
+        default: 'false'
+        type: boolean
+
+jobs:
+  digest:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Install Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install yt-dlp jinja2 python-dotenv rich requests
+
+    - name: Run Weekly Digest
+      env:
+        GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        GMAIL_USER: ${{ secrets.GMAIL_USER }}
+        GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+        REPORT_RECIPIENT_EMAIL: ${{ secrets.REPORT_RECIPIENT_EMAIL }}
+        PYTHONPATH: ${{ github.workspace }}/AGENT
+        DRY_RUN: ${{ github.event.inputs.dry_run }}
+      run: |
+        if [ "$DRY_RUN" = "true" ]; then
+          python AGENT/execution/weekly_digest_orchestrator.py --no-send
+        else
+          python AGENT/execution/weekly_digest_orchestrator.py
+        fi
+
+    - name: Commit & Push Changes (Archive Update)
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add AGENT/memory/RESEARCH_ARCHIVE.md
+        git commit -m "Update Research Archive with Weekly Digest [skip ci]" || echo "No changes to commit"
+        git push
