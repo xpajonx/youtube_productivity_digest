@@ -13,49 +13,64 @@ class VideoAnalyzer:
         self.model = "llama-3.3-70b-versatile" # Premium Llama 3 model for analysis
 
     def _get_transcript(self, video_url: str) -> Optional[str]:
-        """Extract transcript using yt-dlp."""
+        """Extract transcript using yt-dlp with multi-client fallback."""
+        import time
+        import random
+        
         console.print(f"[info]Extracting transcript for {video_url}...[/]")
         
-        # We use yt-dlp to download subtitles/auto-subs without the video
-        # -o temp_transcript: output template
-        # --skip-download: only subs
-        # --write-auto-subs: fallback to auto-generated
-        # --extractor-args: use different clients to bypass bot detection
-        cmd = [
-            "yt-dlp",
-            "--write-auto-subs",
-            "--skip-download",
-            "--sub-format", "vtt/srt",
-            "-o", "temp_transcript",
-            "--no-warnings",
-            "--extractor-args", "youtube:player-client=android,web",
-            video_url
+        # Try multiple client profiles to bypass bot detection
+        # Android and iOS are often less restricted than Web
+        client_profiles = [
+            "android,web",
+            "ios",
+            "mweb,web"
         ]
         
-        try:
-            result = subprocess.run(cmd, capture_output=True, text=True)
-            if result.returncode != 0:
-                console.print(f"[warning]yt-dlp failed for {video_url}: {result.stderr.strip()}[/]")
-                return None
+        for i, profile in enumerate(client_profiles):
+            if i > 0:
+                wait_time = random.uniform(2, 5)
+                console.print(f"[info]Retrying with profile: {profile} (waiting {wait_time:.1f}s)...[/]")
+                time.sleep(wait_time)
+
+            cmd = [
+                "yt-dlp",
+                "--write-auto-subs",
+                "--skip-download",
+                "--sub-format", "vtt/srt",
+                "-o", "temp_transcript",
+                "--no-warnings",
+                "--extractor-args", f"youtube:player-client={profile}",
+                video_url
+            ]
+            
+            try:
+                result = subprocess.run(cmd, capture_output=True, text=True)
+                if result.returncode != 0:
+                    continue # Try next profile
+                    
+                # Find the generated subtitle file
+                content = None
+                for file in os.listdir("."):
+                    if file.startswith("temp_transcript") and (file.endswith(".vtt") or file.endswith(".srt")):
+                        with open(file, "r", encoding="utf-8") as f:
+                            raw_content = f.read()
+                        os.remove(file)
+                        # Clean up VTT/SRT noise
+                        content = re.sub(r'<[^>]+>', '', raw_content)
+                        content = re.sub(r'\d{2}:\d{2}:\d{2}\.\d{3} --> \d{2}:\d{2}:\d{2}\.\d{3}', '', content)
+                        content = re.sub(r'\d+\n', '', content)
+                        content = ' '.join(content.split())
+                        break
                 
-            # Find the generated subtitle file
-            # yt-dlp usually appends .en.vtt or similar
-            content = None
-            for file in os.listdir("."):
-                if file.startswith("temp_transcript") and (file.endswith(".vtt") or file.endswith(".srt")):
-                    with open(file, "r", encoding="utf-8") as f:
-                        raw_content = f.read()
-                    os.remove(file)
-                    # Clean up VTT/SRT noise (timestamps, tags)
-                    content = re.sub(r'<[^>]+>', '', raw_content)
-                    content = re.sub(r'\d{2}:\d{2}:\d{2}\.\d{3} --> \d{2}:\d{2}:\d{2}\.\d{3}', '', content)
-                    content = re.sub(r'\d+\n', '', content) # Remove line numbers
-                    content = ' '.join(content.split()) # Normalize whitespace
-                    break
-            return content
-        except Exception as e:
-            console.print(f"[error]Failed to extract transcript: {e}[/]")
-            return None
+                if content:
+                    return content
+                    
+            except Exception as e:
+                console.print(f"[warning]Attempt with {profile} failed: {e}[/]")
+                
+        console.print(f"[error]All extraction profiles failed for {video_url}. This video may be blocked or require cookies.[/]")
+        return None
 
     def analyze(self, video_data: Dict, telos_context: Dict) -> Dict:
         """Analyze video using Groq Llama 3 and TELOS context."""
